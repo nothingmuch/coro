@@ -1,0 +1,99 @@
+=head1 NAME
+
+Coro::Signal - coroutine signals (binary semaphores)
+
+=head1 SYNOPSIS
+
+ use Coro::Signal;
+
+ $sig = new Coro::Signal;
+
+ $sig->wait; # wait for signal
+
+ # ... some other "thread"
+
+ $sig->send;
+
+=head1 DESCRIPTION
+
+This module implements signals/binary semaphores/condition variables
+(basically all the same thing). You can wait for a signal to occur or send
+it, in which case it will wake up one waiter, or it can be broadcast,
+waking up all waiters.
+
+It is recommended not to mix C<send> and C<broadcast> calls on the same
+C<Coro::Signal> - it should work as documented, but it can easily confuse
+you :->
+
+=over 4
+
+=cut
+
+package Coro::Signal;
+
+use strict qw(vars subs);
+no warnings;
+
+use Coro::Semaphore ();
+
+our $VERSION = 5.14;
+
+=item $sig = new Coro::Signal;
+
+Create a new signal.
+
+=item $sig->wait
+
+Wait for the signal to occur (via either C<send> or C<broadcast>). Returns
+immediately if the signal has been sent before.
+
+=item $sig->send
+
+Send the signal, waking up I<one> waiting process or remember the signal
+if no process is waiting.
+
+=item $sig->broadcast
+
+Send the signal, waking up I<all> waiting process. If no process is
+waiting the signal is lost.
+
+=item $sig->awaited
+
+Return true when the signal is being awaited by some process.
+
+=cut
+
+#=item $status = $s->timed_wait ($timeout)
+#
+#Like C<wait>, but returns false if no signal happens within $timeout
+#seconds, otherwise true.
+#
+#See C<wait> for some reliability concerns.
+#
+#=cut
+
+#ub timed_wait {
+#  require Coro::Timer;
+#  my $timeout = Coro::Timer::timeout($_[1]);
+#
+#  unless (delete $_[0][0]) {
+#     push @{$_[0][1]}, $Coro::current;
+#     &Coro::schedule;
+#
+#     return 0 if $timeout;
+#  }
+#
+#  1
+#
+
+1;
+
+=back
+
+=head1 AUTHOR
+
+ Marc Lehmann <schmorp@schmorp.de>
+ http://home.schmorp.de/
+
+=cut
+
