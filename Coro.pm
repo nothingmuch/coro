@@ -628,6 +628,28 @@ coro). This is a bug that will be fixed in some future version.
 Similar to C<prio>, but subtract the given value from the priority (i.e.
 higher values mean lower priority, just as in unix).
 
+=item $coro->preempt
+
+Enable automatic cedeing for a coroutine.
+
+Preempting allows CPU bound code which does not call cede to still be used
+without starving the other coroutines:
+
+   my $coro = async { factorial(5000) };
+   $coro->preempt;
+   cede;
+
+This cannot be enabled on the main coroutine because runops is already recursed
+into.
+
+=item $coro->no_preempt
+
+Disable preemption. Can be used to protect critical sections:
+
+   current->no_preempt;
+   ... will not cede automatically ...
+   current->preempt;
+
 =item $olddesc = $coro->desc ($newdesc)
 
 Sets (or gets in case the argument is missing) the description for this
