@@ -8,6 +8,18 @@ TODO: unready_all
 TODO: myhttpd header parsing
 TODO: channel->maxsize(newsize)?
 
+5.15  Tue Jun 30 10:28:06 CEST 2009
+	- deprecate Coro::Socket, document how to get ipv6 support via
+          AnyEvent::Socket instead.
+	- implement signal->wait ($cb) interface, similar to semaphores.
+        - work around SvOK not supporting getmagic, so we have to getmagic
+          to test for undef :/ (reported by Matthias Waldorf).
+        - load Coro::AnyEvent in all modules using AnyEvent.
+        - work around perl corrupting our internal data structures,
+          reported by Tokuhiro Matsuno.
+        - enable per-coroutine real and cpu time gathering
+          (Coro::State::enable_times).
+
 5.14  Wed Jun 24 01:37:48 CEST 2009
 	- provide explicit functions to "cede" to the event loop in Coro::AnyEvent,
           as this seems to have been a difficult concept (poll, sleep, idle,

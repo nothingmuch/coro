@@ -93,7 +93,7 @@ sub warnhook { &$WARNHOOK }
 use XSLoader;
 
 BEGIN {
-   our $VERSION = 5.14;
+   our $VERSION = 5.15;
 
    # must be done here because the xs part expects it to exist
    # it might exist already because Coro::Specific created it.
@@ -336,6 +336,29 @@ default being C<4>.
 =item @states = Coro::State::list
 
 Returns a list of all states currently allocated.
+
+=item $was_enabled = Coro::State::enable_times [$enable]
+
+Enables/disables/queries the current state of per-thread real and
+cpu-time gathering.
+
+When enabled, the real time and the cpu time (user + system time)
+spent in each thread is accumulated. If disabled, then the accumulated
+times will stay as they are (they start at 0).
+
+Currently, cpu time is only measured on GNU/Linux systems, all other
+systems only gather real time.
+
+Enabling time profiling slows down thread switching by a factor of 2 to
+10, depending on platform on hardware.
+
+The times will be displayed when running C<Coro::Debug::command "ps">, and
+cna be queried by calling C<< $state->times >>.
+
+=item ($real, $cpu) = $state->times
+
+Returns the real time and cpu times spent in the given C<$state>. See
+C<Coro::State::enable_times> for more info.
 
 =item $clone = $state->clone
 

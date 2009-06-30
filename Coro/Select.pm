@@ -12,10 +12,10 @@ Coro::Select - a (slow but coro-aware) replacement for CORE::select
 
 This module tries to create a fully working replacement for perl's
 C<select> built-in, using C<AnyEvent> watchers to do the job, so other
-coroutines can run in parallel to any select user. As many libraries that
+threads can run in parallel to any select user. As many libraries that
 only have a blocking API do not use global variables and often use select
 (or IO::Select), this effectively makes most such libraries "somewhat"
-non-blocking w.r.t. other coroutines.
+non-blocking w.r.t. other threads.
 
 To be effective globally, this module must be C<use>'d before any other
 module that uses C<select>, so it should generally be the first module
@@ -58,7 +58,7 @@ use Coro::AnyEvent ();
 
 use base Exporter::;
 
-our $VERSION = 5.14;
+our $VERSION = 5.15;
 our @EXPORT_OK = "select";
 
 sub import {

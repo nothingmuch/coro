@@ -33,7 +33,7 @@ no warnings;
 use Coro ();
 use Coro::Semaphore ();
 
-our $VERSION = 5.14;
+our $VERSION = 5.15;
 
 sub DATA (){ 0 }
 sub SGET (){ 1 }

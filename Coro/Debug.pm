@@ -122,7 +122,7 @@ use Coro::State ();
 use Coro::AnyEvent ();
 use Coro::Timer ();
 
-our $VERSION = 5.14;
+our $VERSION = 5.15;
 
 our %log;
 our $SESLOGLEVEL = exists $ENV{PERL_CORO_DEFAULT_LOGLEVEL} ? $ENV{PERL_CORO_DEFAULT_LOGLEVEL} : -1;
@@ -278,11 +278,16 @@ sub command($) {
    $cmd =~ s/\s+$//;
 
    if ($cmd =~ /^ps (?:\s* (\S+))? $/x) {
+      my $times = Coro::State::enable_times;
       my $flags = $1;
-      my $desc = $flags =~ /w/ ? "%-24s" : "%-24.24s";
       my $verbose = $flags =~ /v/;
-      my $buf = sprintf "%20s %s%s %4s %4s $desc %s\n",
-                        "PID", "S", "C", "RSS", "USES", "Description", "Where";
+      my $desc_format = $flags =~ /w/ ? "%-24s" : "%-24.24s";
+      my $tim0_format = $times ? " %9s %8s " : " ";
+      my $tim1_format = $times ? " %9.3f %8.3f " : " ";
+      my $buf = sprintf "%20s %s%s %4s %4s$tim0_format$desc_format %s\n",
+                        "PID", "S", "C", "RSS", "USES",
+                        $times ? ("t_real", "t_cpu") : (),
+                        "Description", "Where";
       for my $coro (reverse Coro::State::list) {
          my @bt;
          Coro::State::call ($coro, sub {
@@ -295,12 +300,13 @@ sub command($) {
             }
          });
          $bt[1] =~ s/^.*[\/\\]// if @bt && !$verbose;
-         $buf .= sprintf "%20s %s%s %4s %4s $desc %s\n",
+         $buf .= sprintf "%20s %s%s %4s %4s$tim1_format$desc_format %s\n",
                          $coro+0,
                          $coro->is_new ? "N" : $coro->is_running ? "U" : $coro->is_ready ? "R" : "-",
                          $coro->is_traced ? "T" : $coro->has_cctx ? "C" : "-",
                          format_num4 $coro->rss,
                          format_num4 $coro->usecount,
+                         $times ? $coro->times : (),
                          $coro->debug_desc,
                          (@bt ? sprintf "[%s:%d]", $bt[1], $bt[2] : "-");
       }
@@ -355,6 +361,13 @@ sub command($) {
          $coro->throw ($reason);
       }
 
+   } elsif ($cmd =~ /^enable_times(\s+\S.*)?\s*$/) {
+      my $enable = defined $1 ? 1*eval $1 : !Coro::State::enable_times;
+
+      Coro::State::enable_times $enable;
+
+      print "per-thread real and process time gathering ", $enable ? "enabled" : "disabled", ".\n";
+
    } elsif ($cmd =~ /^help$/) {
       print <<EOF;
 ps [w|v]                show the list of all coroutines (wide, verbose)
@@ -365,6 +378,7 @@ untrace <pid>           disable tracing for this coroutine
 kill <pid> <reason>	throws the given <reason> string in <pid>
 cancel <pid>		cancels this coroutine
 ready <pid>		force <pid> into the ready queue
+enable_times <enable>	enable or disable time profiling in ps
 <anything else>         evaluate as perl and print results
 <anything else> &       same as above, but evaluate asynchronously
                         you can use (find_coro <pid>) in perl expressions

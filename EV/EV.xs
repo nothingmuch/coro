@@ -105,6 +105,9 @@ slf_init_timed_io (pTHX_ struct CoroSLF *frame, CV *cv, SV **arg, int items)
   frame->prepare = GCoroAPI->prepare_schedule;
   frame->check   = slf_check_once;
 
+  if (items >= 3)
+    SvGETMAGIC (arg [2]);
+
   ev_once (
     EV_DEFAULT_UC,
     sv_fileno (arg [0]),

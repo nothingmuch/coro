@@ -19,12 +19,12 @@ Coro::Semaphore - counting semaphores
 This module implements counting semaphores. You can initialize a mutex
 with any level of parallel users, that is, you can intialize a sempahore
 that can be C<down>ed more than once until it blocks. There is no owner
-associated with semaphores, so one coroutine can C<down> it while another
+associated with semaphores, so one thread can C<down> it while another
 can C<up> it.
 
 Counting semaphores are typically used to coordinate access to
 resources, with the semaphore count initialized to the number of free
-resources. Coroutines then increment the count when resources are added
+resources. Threads then increment the count when resources are added
 and decrement the count when resources are removed.
 
 =over 4
@@ -37,7 +37,7 @@ no warnings;
 
 use Coro ();
 
-$VERSION = 5.14;
+$VERSION = 5.15;
 
 =item new [inital count]
 
@@ -65,7 +65,7 @@ waits until the semaphore is available if the counter is zero.
 
 Similar to C<down>, but does not actually decrement the counter. Instead,
 when this function returns, a following call to C<down> or C<try> is
-guaranteed to succeed without blocking, until the next coroutine switch
+guaranteed to succeed without blocking, until the next thread switch
 (C<cede> etc.).
 
 Note that using C<wait> is much less efficient than using C<down>, so try
@@ -79,7 +79,7 @@ becomes available (which might be instantly), and gets passed the
 semaphore as first argument.
 
 The callback might C<down> the semaphore exactly once, might wake up other
-coroutines, but is I<NOT> allowed to block (switch to other coroutines).
+threads, but is I<NOT> allowed to block (switch to other threads).
 
 =cut
 
@@ -122,7 +122,7 @@ otherwise return false and leave the semaphore unchanged.
 
 =item $sem->waiters
 
-In scalar context, returns the number of coroutines waiting for this
+In scalar context, returns the number of threads waiting for this
 semaphore.
 
 =item $guard = $sem->guard

@@ -161,7 +161,18 @@ static void *coro_thx;
 # endif
 #endif
 
+#ifdef __linux
+# include <time.h> /* for timespec */
+# include <syscall.h> /* for SYS_* */
+# ifdef SYS_clock_gettime
+#  define coro_clock_gettime(id, ts) syscall (SYS_clock_gettime, (id), (ts))
+#  define CORO_CLOCK_MONOTONIC         1
+#  define CORO_CLOCK_THREAD_CPUTIME_ID 3
+# endif
+#endif
+
 static double (*nvtime)(); /* so why doesn't it take void? */
+static void   (*u2time)(pTHX_ UV ret[2]);
 
 /* we hijack an hopefully unused CV flag for our purposes */
 #define CVf_SLF 0x4000
@@ -196,6 +207,12 @@ static CV *cv_coro_state_new;
 
 /* Coro::AnyEvent */
 static SV *sv_activity;
+
+/* enable processtime/realtime profiling */
+static char enable_times;
+typedef U32 coro_ts[2];
+static coro_ts time_real, time_cpu;
+static char times_valid;
 
 static struct coro_cctx *cctx_first;
 static int cctx_count, cctx_idle;
@@ -295,6 +312,9 @@ struct coro {
   AV *on_enter;
   AV *on_leave;
 
+  /* times */
+  coro_ts t_cpu, t_real;
+
   /* linked list */
   struct coro *next, *prev;
 };
@@ -309,17 +329,17 @@ static struct CoroSLF slf_frame; /* the current slf frame */
 
 /** Coro ********************************************************************/
 
-#define PRIO_MAX     3
-#define PRIO_HIGH    1
-#define PRIO_NORMAL  0
-#define PRIO_LOW    -1
-#define PRIO_IDLE   -3
-#define PRIO_MIN    -4
+#define CORO_PRIO_MAX     3
+#define CORO_PRIO_HIGH    1
+#define CORO_PRIO_NORMAL  0
+#define CORO_PRIO_LOW    -1
+#define CORO_PRIO_IDLE   -3
+#define CORO_PRIO_MIN    -4
 
 /* for Coro.pm */
 static SV *coro_current;
 static SV *coro_readyhook;
-static struct coro *coro_ready [PRIO_MAX - PRIO_MIN + 1][2]; /* head|tail */
+static struct coro *coro_ready [CORO_PRIO_MAX - CORO_PRIO_MIN + 1][2]; /* head|tail */
 static CV *cv_coro_run, *cv_coro_terminate;
 static struct coro *coro_first;
 #define coro_nready coroapi.nready
@@ -368,6 +388,52 @@ coro_sv_2cv (pTHX_ SV *sv)
     croak ("code reference expected");
 
   return cv;
+}
+
+INLINE void
+coro_times_update ()
+{
+#ifdef coro_clock_gettime
+  struct timespec ts;
+
+  ts.tv_sec  = ts.tv_nsec = 0;
+  coro_clock_gettime (CORO_CLOCK_THREAD_CPUTIME_ID, &ts);
+  time_cpu  [0] = ts.tv_sec; time_cpu  [1] = ts.tv_nsec;
+
+  ts.tv_sec  = ts.tv_nsec = 0;
+  coro_clock_gettime (CORO_CLOCK_MONOTONIC, &ts);
+  time_real [0] = ts.tv_sec; time_real [1] = ts.tv_nsec;
+#else
+  UV tv[2];
+
+  u2time (aTHX_ &tv);
+  time_real [0] = tv [0];
+  time_real [1] = tv [1] * 1000;
+#endif
+}
+
+INLINE void
+coro_times_add (struct coro *c)
+{
+  c->t_real [1] += time_real [1];
+  if (c->t_real [1] > 1000000000) { c->t_real [1] -= 1000000000; ++c->t_real [0]; }
+  c->t_real [0] += time_real [0];
+
+  c->t_cpu  [1] += time_cpu  [1];
+  if (c->t_cpu  [1] > 1000000000) { c->t_cpu  [1] -= 1000000000; ++c->t_cpu  [0]; }
+  c->t_cpu  [0] += time_cpu  [0];
+}
+
+INLINE void
+coro_times_sub (struct coro *c)
+{
+  if (c->t_real [1] < time_real [1]) { c->t_real [1] += 1000000000; --c->t_real [0]; }
+  c->t_real [1] -= time_real [1];
+  c->t_real [0] -= time_real [0];
+
+  if (c->t_cpu  [1] < time_cpu  [1]) { c->t_cpu  [1] += 1000000000; --c->t_cpu  [0]; }
+  c->t_cpu  [1] -= time_cpu  [1];
+  c->t_cpu  [0] -= time_cpu  [0];
 }
 
 /*****************************************************************************/
@@ -478,6 +544,10 @@ coro_cv_free (pTHX_ SV *sv, MAGIC *mg)
   AV *padlist;
   AV *av = (AV *)mg->mg_obj;
 
+  /* perl manages to free our internal AV and _then_ call us */
+  if (IN_DESTRUCT)
+    return;
+
   /* casting is fun. */
   while (&PL_sv_undef != (SV *)(padlist = (AV *)av_pop (av)))
     free_padlist (aTHX_ padlist);
@@ -575,6 +645,14 @@ load_perl (pTHX_ Coro__State c)
   slf_frame  = c->slf_frame;
   CORO_THROW = c->except;
 
+  if (expect_false (enable_times))
+    {
+      if (expect_false (!times_valid))
+        coro_times_update ();
+
+      coro_times_sub (c);
+    }
+
   if (expect_false (c->on_enter))
     {
       int i;
@@ -593,6 +671,14 @@ save_perl (pTHX_ Coro__State c)
 
       for (i = AvFILLp (c->on_leave); i >= 0; --i)
         on_enterleave_call (aTHX_ AvARRAY (c->on_leave)[i]);
+    }
+
+  times_valid = 0;
+
+  if (expect_false (enable_times))
+    {
+      coro_times_update (); times_valid = 1;
+      coro_times_add (c);
     }
 
   c->except    = CORO_THROW;
@@ -966,6 +1052,12 @@ coro_setup (pTHX_ struct coro *coro)
 
   /* copy throw, in case it was set before coro_setup */
   CORO_THROW = coro->except;
+
+  if (expect_false (enable_times))
+    {
+      coro_times_update ();
+      coro_times_sub (coro);
+    }
 }
 
 static void
@@ -1624,7 +1716,7 @@ gensub (pTHX_ void (*xsub)(pTHX_ CV *), void *arg)
 INLINE void
 coro_enq (pTHX_ struct coro *coro)
 {
-  struct coro **ready = coro_ready [coro->prio - PRIO_MIN];
+  struct coro **ready = coro_ready [coro->prio - CORO_PRIO_MIN];
 
   SvREFCNT_inc_NN (coro->hv);
 
@@ -1638,7 +1730,7 @@ coro_deq (pTHX)
 {
   int prio;
 
-  for (prio = PRIO_MAX - PRIO_MIN + 1; --prio >= 0; )
+  for (prio = CORO_PRIO_MAX - CORO_PRIO_MIN + 1; --prio >= 0; )
     {
       struct coro **ready = coro_ready [prio];
 
@@ -2633,7 +2725,7 @@ slf_init_semaphore_wait (pTHX_ struct CoroSLF *frame, CV *cv, SV **arg, int item
       AV *av = (AV *)SvRV (arg [0]);
       CV *cb_cv = coro_sv_2cv (aTHX_ arg [1]);
 
-      av_push (av, (SV *)SvREFCNT_inc_NN (cb_cv));
+      av_push (av, SvREFCNT_inc_NN (cb_cv));
 
       if (SvIVX (AvARRAY (av)[0]) > 0)
         coro_semaphore_adjust (aTHX_ av, 0);
@@ -2667,8 +2759,20 @@ coro_signal_wake (pTHX_ AV *av, int count)
 
       cb = av_shift (av);
 
-      api_ready (aTHX_ cb);
-      sv_setiv (cb, 0); /* signal waiter */
+      if (SvTYPE (cb) == SVt_PVCV)
+        {
+          dSP;
+          PUSHMARK (SP);
+          XPUSHs (sv_2mortal (newRV_inc ((SV *)av)));
+          PUTBACK;
+          call_sv (cb, G_VOID | G_DISCARD | G_EVAL | G_KEEPERR);
+        }
+      else
+        {
+          api_ready (aTHX_ cb);
+          sv_setiv (cb, 0); /* signal waiter */
+        }
+
       SvREFCNT_dec (cb);
 
       --count;
@@ -2687,7 +2791,18 @@ slf_init_signal_wait (pTHX_ struct CoroSLF *frame, CV *cv, SV **arg, int items)
 {
   AV *av = (AV *)SvRV (arg [0]);
 
-  if (SvIVX (AvARRAY (av)[0]))
+  if (items >= 2)
+    {
+      CV *cb_cv = coro_sv_2cv (aTHX_ arg [1]);
+      av_push (av, SvREFCNT_inc_NN (cb_cv));
+
+      if (SvIVX (AvARRAY (av)[0]))
+        coro_signal_wake (aTHX_ av, 1); /* ust be the only waiter */
+
+      frame->prepare = prepare_nop;
+      frame->check   = slf_check_nop;
+    }
+  else if (SvIVX (AvARRAY (av)[0]))
     {
       SvIVX (AvARRAY (av)[0]) = 0;
       frame->prepare = prepare_nop;
@@ -2695,7 +2810,7 @@ slf_init_signal_wait (pTHX_ struct CoroSLF *frame, CV *cv, SV **arg, int items)
     }
   else
     {
-      SV *waiter = newRV_inc (SvRV (coro_current)); /* owned by signal av */
+      SV *waiter = newSVsv (coro_current); /* owned by signal av */
 
       av_push (av, waiter);
 
@@ -2944,9 +3059,12 @@ BOOT:
           if (!SvIOK (*svp)) croak ("Time::NVtime isn't a function pointer");
 
           nvtime = INT2PTR (double (*)(), SvIV (*svp));
+
+          svp = hv_fetch (PL_modglobal, "Time::U2time", 12, 0);
+          u2time = INT2PTR (double (*)(), SvIV (*svp));
         }
 
-        assert (("PRIO_NORMAL must be 0", !PRIO_NORMAL));
+        assert (("PRIO_NORMAL must be 0", !CORO_PRIO_NORMAL));
 }
 
 SV *
@@ -3158,6 +3276,7 @@ throw (Coro::State self, SV *throw = &PL_sv_undef)
 	struct coro *current = SvSTATE_current;
 	SV **throwp = self == current ? &CORO_THROW : &self->except;
         SvREFCNT_dec (*throwp);
+        SvGETMAGIC (throw);
         *throwp = SvOK (throw) ? newSVsv (throw) : 0;
 }
 
@@ -3226,6 +3345,43 @@ cancel (Coro::State self)
         coro_call_on_destroy (aTHX_ self); /* actually only for Coro objects */
 
 
+SV *
+enable_times (int enabled = enable_times)
+	CODE:
+{
+        RETVAL = boolSV (enable_times);
+
+        if (enabled != enable_times)
+          {
+            enable_times = enabled;
+
+            coro_times_update ();
+            (enabled ? coro_times_sub : coro_times_add)(SvSTATE (coro_current));
+          }
+}
+        OUTPUT:
+        RETVAL
+
+void
+times (Coro::State self)
+	PPCODE:
+{
+  	struct coro *current = SvSTATE (coro_current);
+
+        if (expect_false (current == self))
+          {
+            coro_times_update ();
+            coro_times_add (SvSTATE (coro_current));
+          }
+
+        EXTEND (SP, 2);
+        PUSHs (sv_2mortal (newSVnv (self->t_real [0] + self->t_real [1] * 1e-9)));
+        PUSHs (sv_2mortal (newSVnv (self->t_cpu  [0] + self->t_cpu  [1] * 1e-9)));
+
+        if (expect_false (current == self))
+          coro_times_sub (SvSTATE (coro_current));
+}
+
 MODULE = Coro::State                PACKAGE = Coro
 
 BOOT:
@@ -3247,12 +3403,12 @@ BOOT:
 
 	coro_stash = gv_stashpv ("Coro", TRUE);
 
-        newCONSTSUB (coro_stash, "PRIO_MAX",    newSViv (PRIO_MAX));
-        newCONSTSUB (coro_stash, "PRIO_HIGH",   newSViv (PRIO_HIGH));
-        newCONSTSUB (coro_stash, "PRIO_NORMAL", newSViv (PRIO_NORMAL));
-        newCONSTSUB (coro_stash, "PRIO_LOW",    newSViv (PRIO_LOW));
-        newCONSTSUB (coro_stash, "PRIO_IDLE",   newSViv (PRIO_IDLE));
-        newCONSTSUB (coro_stash, "PRIO_MIN",    newSViv (PRIO_MIN));
+        newCONSTSUB (coro_stash, "PRIO_MAX",    newSViv (CORO_PRIO_MAX));
+        newCONSTSUB (coro_stash, "PRIO_HIGH",   newSViv (CORO_PRIO_HIGH));
+        newCONSTSUB (coro_stash, "PRIO_NORMAL", newSViv (CORO_PRIO_NORMAL));
+        newCONSTSUB (coro_stash, "PRIO_LOW",    newSViv (CORO_PRIO_LOW));
+        newCONSTSUB (coro_stash, "PRIO_IDLE",   newSViv (CORO_PRIO_IDLE));
+        newCONSTSUB (coro_stash, "PRIO_MIN",    newSViv (CORO_PRIO_MIN));
 
         {
           SV *sv = coro_get_sv (aTHX_ "Coro::API", TRUE);
@@ -3314,6 +3470,7 @@ _set_readyhook (SV *hook)
 	PROTOTYPE: $
         CODE:
         SvREFCNT_dec (coro_readyhook);
+        SvGETMAGIC (hook);
         coro_readyhook = SvOK (hook) ? newSVsv (hook) : 0;
 
 int
@@ -3330,8 +3487,8 @@ prio (Coro::State coro, int newprio = 0)
             if (ix)
               newprio = coro->prio - newprio;
 
-            if (newprio < PRIO_MIN) newprio = PRIO_MIN;
-            if (newprio > PRIO_MAX) newprio = PRIO_MAX;
+            if (newprio < CORO_PRIO_MIN) newprio = CORO_PRIO_MIN;
+            if (newprio > CORO_PRIO_MAX) newprio = CORO_PRIO_MAX;
 
             coro->prio = newprio;
           }
@@ -3467,10 +3624,22 @@ MODULE = Coro::State                PACKAGE = Coro::Semaphore
 SV *
 new (SV *klass, SV *count = 0)
 	CODE:
+{
+  	int semcnt = 1;
+
+        if (count)
+          {
+            SvGETMAGIC (count);
+
+            if (SvOK (count))
+              semcnt = SvIV (count);
+          }
+
         RETVAL = sv_bless (
-                   coro_waitarray_new (aTHX_ count && SvOK (count) ? SvIV (count) : 1),
+                   coro_waitarray_new (aTHX_ semcnt),
                    GvSTASH (CvGV (cv))
                  );
+}
 	OUTPUT:
         RETVAL
 

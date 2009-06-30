@@ -82,7 +82,7 @@ our $idle;    # idle handler
 our $main;    # main coro
 our $current; # current coro
 
-our $VERSION = 5.14;
+our $VERSION = 5.15;
 
 our @EXPORT = qw(async async_pool cede schedule terminate current unblock_sub);
 our %EXPORT_TAGS = (
@@ -753,7 +753,9 @@ this coro).
 
 As soon as the callback is invoked (or when the callback was invoked
 before C<rouse_wait>), it will return the arguments originally passed to
-the rouse callback.
+the rouse callback. In scalar context, that means you get the I<last>
+argument, just as if C<rouse_wait> had a C<return ($a1, $a2, $a3...)>
+statement at the end.
 
 See the section B<HOW TO WAIT FOR A CALLBACK> for an actual usage example.
 

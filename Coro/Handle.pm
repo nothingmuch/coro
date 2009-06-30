@@ -46,7 +46,7 @@ use AnyEvent::Util qw(WSAEWOULDBLOCK WSAEINPROGRESS);
 
 use base 'Exporter';
 
-our $VERSION = 5.14;
+our $VERSION = 5.15;
 our @EXPORT = qw(unblock);
 
 =item $fh = new_from_fh Coro::Handle $fhandle [, arg => value...]
@@ -260,7 +260,6 @@ use strict;
 use Carp 'croak';
 use Errno qw(EAGAIN EINTR);
 
-use AnyEvent ();
 use AnyEvent::Util qw(WSAEWOULDBLOCK);
 
 use Coro::AnyEvent;

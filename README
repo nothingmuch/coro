@@ -521,7 +521,9 @@ GLOBAL FUNCTIONS
 
         As soon as the callback is invoked (or when the callback was invoked
         before "rouse_wait"), it will return the arguments originally passed
-        to the rouse callback.
+        to the rouse callback. In scalar context, that means you get the
+        *last* argument, just as if "rouse_wait" had a "return ($a1, $a2,
+        $a3...)" statement at the end.
 
         See the section HOW TO WAIT FOR A CALLBACK for an actual usage
         example.

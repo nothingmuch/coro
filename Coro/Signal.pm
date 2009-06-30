@@ -1,6 +1,6 @@
 =head1 NAME
 
-Coro::Signal - coroutine signals (binary semaphores)
+Coro::Signal - thread signals (binary semaphores)
 
 =head1 SYNOPSIS
 
@@ -36,7 +36,7 @@ no warnings;
 
 use Coro::Semaphore ();
 
-our $VERSION = 5.14;
+our $VERSION = 5.15;
 
 =item $sig = new Coro::Signal;
 
@@ -46,6 +46,15 @@ Create a new signal.
 
 Wait for the signal to occur (via either C<send> or C<broadcast>). Returns
 immediately if the signal has been sent before.
+
+=item $sem->wait ($callback)
+
+If you pass a callback argument to C<wait>, it will not wait, but
+immediately return. The callback will be called under the same conditions
+as C<wait> without arguments would continue the thrad.
+
+The callback might wake up any number of threads, but is I<NOT> allowed to
+block (switch to other threads).
 
 =item $sig->send
 

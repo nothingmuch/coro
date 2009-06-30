@@ -1,5 +1,5 @@
 $|=1;
-print "1..10\n";
+print "1..18\n";
 
 no warnings;
 use Coro;
@@ -54,6 +54,22 @@ use Coro::Signal;
    print +(Coro::Semaphore::count $sig) == 0 ? "" : "not ", "ok 8\n";
    cede;
 
-   print +(Coro::Semaphore::count $sig) == 0 ? "" : "not ", "ok 10\n";
+   $sig->wait (sub { print "ok 12\n" });
+   print "ok 10\n";
+
+   print "ok 11\n";
+
+   $sig->send;
+   print "ok 13\n";
+   cede;
+
+   print "ok 14\n";
+   $sig->send;
+   print "ok 15\n";
+
+   $sig->wait (sub { print "ok 16\n" });
+   print "ok 17\n";
+
+   print +(Coro::Semaphore::count $sig) == 0 ? "" : "not ", "ok 18\n";
 }
 

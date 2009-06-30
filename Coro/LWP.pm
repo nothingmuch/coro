@@ -85,6 +85,7 @@ use AnyEvent::DNS ();
 
 use Coro::Util ();
 use Coro::Socket ();
+use Coro::AnyEvent ();
 
 use Socket ();
 
@@ -94,7 +95,7 @@ use Net::HTTP ();
 use Net::FTP ();
 use Net::NNTP ();
 
-our $VERSION = 5.14;
+our $VERSION = 5.15;
 
 *Socket::inet_aton = \&Coro::Util::inet_aton;
 

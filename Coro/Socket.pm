@@ -27,6 +27,35 @@ that is, other coroutines can run while reads or writes block on the
 handle. See L<Coro::Handle>, especially the note about prefering method
 calls.
 
+=head1 IPV6 WARNING
+
+This module was written to imitate the L<IO::Socket::INET> API, and derive
+from it. Since IO::Socket::INET does not support IPv6, this module does
+neither.
+
+Therefore it is not recommended to use Coro::Socket in new code. Instead,
+use L<AnyEvent::Socket> and L<Coro::Handle>, e.g.:
+
+   use Coro;
+   use Coro::Handle;
+   use AnyEvent::Socket;
+
+   # use tcp_connect from AnyEvent::Socket
+   # and call Coro::Handle::unblock on it.
+
+   tcp_connect "www.google.com", 80, Coro::rouse_cb;
+   my $fh = unblock +(Coro::rouse_wait)[0];
+
+   # now we have a perfectly thread-safe socket handle in $fh
+   print $fh "GET / HTTP/1.0\015\012\015\012";
+   local $/;
+   print <$fh>;
+
+Using C<AnyEvent::Socket::tcp_connect> gives you transparent IPv6,
+multi-homing, SRV-record etc. support.
+
+For listening sockets, use C<AnyEvent::Socket::tcp_server>.
+
 =over 4
 
 =cut
@@ -46,7 +75,7 @@ use Coro::Util ();
 
 use base qw(Coro::Handle IO::Socket::INET);
 
-our $VERSION = 5.14;
+our $VERSION = 5.15;
 
 our (%_proto, %_port);
 
